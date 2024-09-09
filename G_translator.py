@@ -1,42 +1,64 @@
-# streamlit_translator_detect.py
 import streamlit as st
-from googletrans import Translator, LANGUAGES
+from transformers import MarianMTModel, MarianTokenizer
 
-# Initialize the Translator
-translator = Translator()
+# Define available language codes (MarianMT uses language pairs)
+language_codes = {
+    'English': 'en',
+    'French': 'fr',
+    'Spanish': 'es',
+    'German': 'de',
+    'Italian': 'it',
+    'Dutch': 'nl',
+    'Russian': 'ru',
+    'Chinese': 'zh',
+    'Japanese': 'ja',
+    'Hindi': 'hi'
+}
 
-# Streamlit App Title
-st.title("Language Translator with Auto Language Detection")
+def load_model(src_lang, tgt_lang):
+    # Load the appropriate MarianMT model and tokenizer based on source and target languages
+    model_name = f'Helsinki-NLP/opus-mt-{src_lang}-{tgt_lang}'
+    model = MarianMTModel.from_pretrained(model_name)
+    tokenizer = MarianTokenizer.from_pretrained(model_name)
+    return model, tokenizer
 
-# Input Text from the User
-text_to_translate = st.text_area("Enter text to translate:", "")
+def translate(text, model, tokenizer):
+    # Tokenize and translate the input text
+    tokenized_text = tokenizer.prepare_seq2seq_batch([text], return_tensors="pt")
+    translation = model.generate(**tokenized_text)
+    translated_text = tokenizer.batch_decode(translation, skip_special_tokens=True)[0]
+    return translated_text
 
-# Detect the language automatically when the user enters text
-detected_language = None
-if text_to_translate.strip():
-    detected_lang_code = translator.detect(text_to_translate).lang
-    detected_language = LANGUAGES.get(detected_lang_code, "unknown")
-    st.write(f"**Detected Language:** {detected_language.capitalize()}")
+def main():
+    st.title("Language Translator")
+    
+    # Language selection
+    src_lang = st.selectbox("Select source language:", list(language_codes.keys()))
+    tgt_lang = st.selectbox("Select target language:", list(language_codes.keys()))
+    
+    # Ensure source and target languages are different
+    if src_lang == tgt_lang:
+        st.error("Source and target languages must be different.")
+        return
+    
+    # Get input text
+    text = st.text_area("Enter text to translate:")
+    
+    if st.button("Translate"):
+        if text.strip() == "":
+            st.warning("Please enter some text to translate.")
+        else:
+            src_code = language_codes[src_lang]
+            tgt_code = language_codes[tgt_lang]
+            
+            try:
+                # Load model and tokenizer for the selected language pair
+                model, tokenizer = load_model(src_code, tgt_code)
+                translated_text = translate(text, model, tokenizer)
+                st.success(f"Translated Text ({tgt_lang}):")
+                st.write(translated_text)
+            except Exception as e:
+                st.error(f"Error in translation: {str(e)}")
 
-# Language Selection for Translation
-target_language = st.selectbox("Select target language", list(LANGUAGES.values()), index=list(LANGUAGES.keys()).index('es'))
-
-# Get the target language code from the selected language
-target_language_code = list(LANGUAGES.keys())[list(LANGUAGES.values()).index(target_language)]
-
-# Translate Button
-if st.button("Translate"):
-    if text_to_translate.strip() == "":
-        st.warning("Please enter some text to translate.")
-    else:
-        # Translation
-        try:
-            translated_text = translator.translate(text_to_translate, dest=target_language_code).text
-            st.success("Translation Successful!")
-            st.write(f"**Translated Text:** {translated_text}")
-        except Exception as e:
-            st.error(f"Error: {e}")
-
-# Display supported languages in a collapsible section
-with st.expander("Supported Languages"):
-    st.write(", ".join(LANGUAGES.values()))
+if __name__ == "__main__":
+    main()
